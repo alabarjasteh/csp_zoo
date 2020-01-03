@@ -1,108 +1,134 @@
 # zooSearch.py
-##############
-
+#-------------
+import util
 import heapq
 
 
 class SearchProblem:
-    def assignVariable(self, var, value):
-    def unassignVariable(self, var):
-    def isConsistent(self, lastAssignment): 
-    def isComplete(self, assignments):
-    def isFailed(self): #empty domain
+    def assign(self, var, val, assignment):
+        """
+        assign {var: val} to assignment
+        """
+    def unassign(self, var, assignment):
+        """
+        unassign a variable form assinment
+        """
         
+    def nConflicts(self, var, val, assignment):
+        """
+        number of conflics
+        """
 
+    def assume(self, var, value):
+        """
+        assume var=value
+        """
+    
+    def restore(self, removals):
+        """
+        retore the assumption of val=var
+        """    
 
 def backtrackingSearch(csp):
-    return _recursiveBacktracking(csp, minimumRemainingVariable, leastConstrainingValue)
+    return _recursiveBacktracking({}, csp, mrv, lcv, mac)
 
-def _recursiveBacktracking(csp, variableSelectionFuction, valueOrderingFuction):
-    if csp.isComplete():
-        return csp.domains
-    var = variableSelectionFuction(csp)
-    if var == None:
-        print('None var')
-    orderedValues = valueOrderingFuction(var, csp)
-    for value in orderedValues:
-        # if csp.isConsistent(var, value): # valueOrderingFuction just returns consistent values
-            csp.assignVariable(var, value)
-            result = _recursiveBacktracking(csp, variableSelectionFuction, valueOrderingFuction)
-            if not csp.isFailed():
-                return result
-            csp.unassignVariable(var)
-    return {}
+def _recursiveBacktracking(assignment, csp, variableSelectionFuction, valueOrderingFuction, inference):
+    if len(assignment) == len(csp.variables):
+        return assignment
+    var = variableSelectionFuction(assignment, csp)
+    for val in valueOrderingFuction(var, assignment, csp):
+        if csp.nConflicts(var, val, assignment) == 0:
+            csp.assign(var, val, assignment)
+            removals = csp.assume(var, val)
+            if inference(csp, var, val, assignment, removals):
+                result = _recursiveBacktracking(assignment, csp, variableSelectionFuction, valueOrderingFuction, inference)
+                if result is not None:
+                    return result
+            csp.restore(removals)
+    csp.unassign(var, assignment)
+    return None
 
-
-def minimumRemainingVariable(csp):
-    min = 1000 #a reletively big number
-    minVar = None
-    for var in csp.variables:
-        if not csp.isAssigned[var]:
-            remainingDomainSize = len(csp.domains[var])
-            if remainingDomainSize < min:
-                min = remainingDomainSize
-                minVars = var
-    return minVar
     
-def trivialVariableChoose(csp):
-    return first([var for var in csp.variables if not csp.isAssigned[var]])
+# AC3
 
-def leastConstrainingValue(var, csp):
-    pq = PriorityQueue()
-    domainsLenSum_beforValueAssignment = sum([len(domain) for domain in csp.domains.values()])
-    orderedValues = []
-    values = csp.domains[var]
-    for val in values:
-        if csp.isConsistent(var, val):
-            csp.assignVariable(var, val)
-            domainsLenSum = sum([len(domain) for domain in csp.domains.values()])
-            newConstraintsCaused = domainsLenSum_beforValueAssignment - domainsLenSum
-            pq.push(val, newConstraintsCaused)
-            csp.unassignVariable(var)
-    while not pq.isEmpty():
-        orderedValues.append(pq.pop())
-    return orderedValues
+def AC3(csp):
+    queue = util.Queue()
+    if queue.isEmpty():
+        [queue.push((Xi, Xj)) for Xi in csp.variables for Xj in csp.neighbours[Xi]]
+    while not queue.isEmpty():
+        Xi, Xj = queue.pop()
+        if revise(csp, Xi, Xj):
+            if not csp.domains[Xi]:
+                return False
+            for Xk in csp.neighbours[Xi]:
+                if Xk is Xj:
+                    continue
+                queue.push((Xk, Xi))
+    return True
 
-
-def trivialValueOrdering(var, csp):
-    return [val for val in csp.domains[var] if csp.isConsistent(val)]
-
-############ utilities #########
-
-class PriorityQueue:
-    """
-      Implements a priority queue data structure. Each inserted item
-      has a priority associated with it and the client is usually interested
-      in quick retrieval of the lowest-priority item in the queue. This
-      data structure allows O(1) access to the lowest-priority item.
-    """
-    def  __init__(self):
-        self.heap = []
-        self.count = 0
-
-    def push(self, item, priority):
-        entry = (priority, self.count, item)
-        heapq.heappush(self.heap, entry)
-        self.count += 1
-
-    def pop(self):
-        (_, _, item) = heapq.heappop(self.heap)
-        return item
-
-    def isEmpty(self):
-        return len(self.heap) == 0
-
-    def update(self, item, priority):
-        # If item already in priority queue with higher priority, update its priority and rebuild the heap.
-        # If item already in priority queue with equal or lower priority, do nothing.
-        # If item not in priority queue, do the same thing as self.push.
-        for index, (p, c, i) in enumerate(self.heap):
-            if i == item:
-                if p <= priority:
-                    break
-                del self.heap[index]
-                self.heap.append((priority, c, item))
-                heapq.heapify(self.heap)
+def revise(csp, Xi, Xj):
+    revised = False
+    for x in csp.domains[Xi]:
+        for y in csp.domains[Xj]:
+            if csp.constraints(Xi, x, Xj, y):
                 break
-        else:
-            self.push(item, priority)
+        if not csp.constraints(Xi, x, Xj, y):
+            csp.domains[Xi].remove(x)
+            revised = True
+    return revised
+
+
+
+# variable ordering 
+
+def firstUnassignedVariable(assignment, csp):
+    """
+    A trivial heuristic to return first variable which is not assigned yet
+    """
+    return util.first([var for var in csp.variables if var not in assignment])
+
+def mrv(assignment, csp):
+    """Minimum-remaining-values heuristic."""
+    return util.argmin_random_tie([v for v in csp.variables if v not in assignment],
+                             key=lambda var: num_legal_values(csp, var, assignment))
+
+def num_legal_values(csp, var, assignment):
+    return util.count(csp.nConflicts(var, val, assignment) == 0 for val in csp.domains[var])
+
+
+# value ordering
+
+def lcv(var, assignment, csp):
+    """Least-constraining-values heuristic."""
+    if not csp.domains[var]:
+        return []
+    else:
+        return sorted(csp.domains[var], key=lambda val: csp.nConflicts(var, val, assignment))
+
+
+def trivialValueOrdering(var, assignment, csp):
+    return csp.domains[var]
+
+
+
+# inferences
+
+def trivialInference(csp, var, value, assignment, removals):
+    return True
+
+
+def forwardChecking(csp, var, value, assignment, removals):
+    """Prune neighbour values inconsistent with var=value."""
+    for nbr in csp.neighbours[var]:
+        if nbr not in assignment:
+            for nbrVal in csp.domains[nbr]:
+                if not csp.constraints(var, value, nbr, nbrVal):
+                    csp.domains[nbr].remove(nbrVal)
+            if not csp.domains[nbr]:
+                return False
+    return True
+
+def mac(csp, var, value, assignment, removals, constraint_propagation=AC3):
+    """Maintain arc consistency."""
+    return constraint_propagation(csp)
+
