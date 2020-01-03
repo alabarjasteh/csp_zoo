@@ -83,3 +83,12 @@ if __name__ == '__main__':
         csp = ZooProblem(list(range(nVariables)) , domains, neighbours, constraints)
         result  = zooSearch.backtrackingSearch(csp)
         print("result", result)
+
+        # write formatted results to a text file
+        with open("out.txt", 'w+') as out:
+            if not result: 
+                out.write("Sorry, No answer was found!")
+            else:
+                pf = [(x, result[x]) for x in result.keys()]
+                for x, y in pf:
+                    out.write(str(x)+ " " +str(y) + "\n")
